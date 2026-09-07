@@ -1042,34 +1042,65 @@ function generateCssSnippet(){
 
 const exportWebglBtn = document.getElementById('exportWebglBtn');
 exportWebglBtn.addEventListener('click', () => {
-  try {
-    // Clone the current page's full HTML, but bake the live slider/param
-    // values in as the new defaults, so the exported file reproduces the
-    // exact WebGL effect currently on screen (not a CSS approximation).
-    const doc = document.documentElement.cloneNode(true);
+  // The page embeds a large base64 background image, so building the
+  // export can take a few seconds. Give immediate visual feedback so
+  // the button doesn't look unresponsive/broken while it works.
+  const originalLabel = exportWebglBtn.textContent;
+  exportWebglBtn.disabled = true;
+  exportWebglBtn.textContent = 'Exporting…';
+  exportWebglBtn.style.opacity = '0.6';
+  exportWebglBtn.style.cursor = 'wait';
 
-    // Hide the parameter panel (and its export buttons) and the label/hint
-    // text in the exported copy — keep just the canvas + effect.
-    const clonedPanel = doc.querySelector('.panel');
-    if (clonedPanel) clonedPanel.style.display = 'none';
-    const clonedLabel = doc.querySelector('.label');
-    if (clonedLabel) clonedLabel.style.display = 'none';
-    const clonedHint = doc.querySelector('.hint');
-    if (clonedHint) clonedHint.style.display = 'none';
-    const clonedModal = doc.querySelector('.modal-overlay');
-    if (clonedModal) clonedModal.style.display = 'none';
+  // Defer the heavy work one tick so the browser can actually paint the
+  // "Exporting…" state before the synchronous cloning/stringifying blocks.
+  setTimeout(() => {
+    try {
+      // Clone the current page's full HTML, but bake the live slider/param
+      // values in as the new defaults, so the exported file reproduces the
+      // exact WebGL effect currently on screen (not a CSS approximation).
+      const doc = document.documentElement.cloneNode(true);
 
-    // Serialize current params object as the new default object literal.
-    const paramsSrc = `const params = ${JSON.stringify(params, null, 2)};`;
+      // Hide the parameter panel (and its export buttons) and the label/hint
+      // text in the exported copy — keep just the canvas + effect.
+      const clonedPanel = doc.querySelector('.panel');
+      if (clonedPanel) clonedPanel.style.display = 'none';
+      const clonedLabel = doc.querySelector('.label');
+      if (clonedLabel) clonedLabel.style.display = 'none';
+      const clonedHint = doc.querySelector('.hint');
+      if (clonedHint) clonedHint.style.display = 'none';
+      const clonedModal = doc.querySelector('.modal-overlay');
+      if (clonedModal) clonedModal.style.display = 'none';
 
-    let html = '<!DOCTYPE html>\n' + doc.outerHTML;
+      // Serialize current params object as the new default object literal.
+      const paramsSrc = `const params = ${JSON.stringify(params, null, 2)};`;
 
-    // Replace the original params declaration with the current live values.
-    html = html.replace(/const params = \{[\s\S]*?\n\};/, paramsSrc);
+      let html = '<!DOCTYPE html>\n' + doc.outerHTML;
 
-    // Prepend a build/usage instructions comment block so the exported
-    // file is self-documenting even with the parameter panel hidden.
-    const instructions = `<!--
+      // Replace the original params declaration with the current live values.
+      html = html.replace(/const params = \{[\s\S]*?\n\};/, paramsSrc);
+
+      // Strip the ~1.4MB embedded base64 background photo and swap in a
+      // tiny inline SVG gradient instead. This is what makes the export
+      // slow (cloning/serializing/regexing a 1.4MB string takes several
+      // seconds) — dropping it brings the file down to a few KB and the
+      // export completes near-instantly. The glass effect itself is
+      // unaffected; only the photo behind it changes to a placeholder.
+      const placeholderBg = 'data:image/svg+xml;base64,' + btoa(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">' +
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+        '<stop offset="0" stop-color="#1a1a2e"/>' +
+        '<stop offset="1" stop-color="#16213e"/>' +
+        '</linearGradient></defs>' +
+        '<rect width="64" height="64" fill="url(#g)"/></svg>'
+      );
+      html = html.replace(
+        /img\.src = 'data:image\/png;base64,[^']*';/,
+        `img.src = '${placeholderBg}';`
+      );
+
+      // Prepend a build/usage instructions comment block so the exported
+      // file is self-documenting even with the parameter panel hidden.
+      const instructions = `<!--
   ============================================================
    LIQUID GLASS — standalone WebGL export
   ============================================================
@@ -1107,23 +1138,36 @@ exportWebglBtn.addEventListener('click', () => {
     <script> block into your page (keep the id, or update the
     getElementById('glcanvas') call to match). The effect is
     self-initializing on load and resizes to fill its canvas.
+
+  Note: the demo's background photo has been swapped for a small
+  placeholder gradient in this export, so the file stays small.
+  To use your own image, replace the img.src data URI in the
+  "background image" section of the script below.
   ============================================================
 -->
 `;
-    html = html.replace(/^<!DOCTYPE html>\n/, '<!DOCTYPE html>\n' + instructions);
+      html = html.replace(/^<!DOCTYPE html>\n/, '<!DOCTYPE html>\n' + instructions);
 
-    const blob = new Blob([html], {type: 'text/html'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'liquid-glass-webgl-export.html';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  } catch(err) {
-    alert('WebGL export failed:\n' + (err && err.message ? err.message : err));
-  }
+      const blob = new Blob([html], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'liquid-glass-webgl-export.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      exportWebglBtn.textContent = 'Exported ✓';
+      setTimeout(() => { exportWebglBtn.textContent = originalLabel; }, 1400);
+    } catch(err) {
+      alert('WebGL export failed:\n' + (err && err.message ? err.message : err));
+      exportWebglBtn.textContent = originalLabel;
+    } finally {
+      exportWebglBtn.disabled = false;
+      exportWebglBtn.style.opacity = '';
+      exportWebglBtn.style.cursor = '';
+    }
+  }, 20);
 });
 
 const exportBtn = document.getElementById('exportBtn');
