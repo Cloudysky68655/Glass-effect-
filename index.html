@@ -1040,6 +1040,92 @@ function generateCssSnippet(){
 </style>`;
 }
 
+const exportWebglBtn = document.getElementById('exportWebglBtn');
+exportWebglBtn.addEventListener('click', () => {
+  try {
+    // Clone the current page's full HTML, but bake the live slider/param
+    // values in as the new defaults, so the exported file reproduces the
+    // exact WebGL effect currently on screen (not a CSS approximation).
+    const doc = document.documentElement.cloneNode(true);
+
+    // Hide the parameter panel (and its export buttons) and the label/hint
+    // text in the exported copy — keep just the canvas + effect.
+    const clonedPanel = doc.querySelector('.panel');
+    if (clonedPanel) clonedPanel.style.display = 'none';
+    const clonedLabel = doc.querySelector('.label');
+    if (clonedLabel) clonedLabel.style.display = 'none';
+    const clonedHint = doc.querySelector('.hint');
+    if (clonedHint) clonedHint.style.display = 'none';
+    const clonedModal = doc.querySelector('.modal-overlay');
+    if (clonedModal) clonedModal.style.display = 'none';
+
+    // Serialize current params object as the new default object literal.
+    const paramsSrc = `const params = ${JSON.stringify(params, null, 2)};`;
+
+    let html = '<!DOCTYPE html>\n' + doc.outerHTML;
+
+    // Replace the original params declaration with the current live values.
+    html = html.replace(/const params = \{[\s\S]*?\n\};/, paramsSrc);
+
+    // Prepend a build/usage instructions comment block so the exported
+    // file is self-documenting even with the parameter panel hidden.
+    const instructions = `<!--
+  ============================================================
+   LIQUID GLASS — standalone WebGL export
+  ============================================================
+  What this is:
+    A single self-contained HTML file with the exact glass
+    effect you configured, baked in as the default parameters.
+    No build step, no dependencies — just open it in a browser,
+    or embed it as-is in any page/iframe.
+
+  Structure of this file:
+    <canvas id="glcanvas">   — the WebGL surface the effect draws to
+    <script> ... </script>   — vertex/fragment shader sources (GLSL,
+                                as JS string literals near the top of
+                                the <script> block) + the render loop
+                                that compiles them and draws each frame
+    const params = { ... }   — every tweakable value (blur radius,
+                                refraction, glare, tint, shadow, shape
+                                size/roundness, etc), set to the exact
+                                values you had dialed in when exporting
+
+  The control panel, export buttons, title label and drag hint
+  have been hidden with display:none (search for ".panel",
+  ".label", ".hint", ".modal-overlay" in the <style> section) —
+  their markup/CSS/JS is still present and untouched, so you can
+  delete those display:none rules any time to get the editable
+  studio UI back.
+
+  To customize further:
+    Edit the values inside `+'`'+`const params = { ... }`+'`'+` directly, or
+    re-enable the panel (remove the display:none rules above) to
+    use the sliders again, then re-export.
+
+  To embed in your own page:
+    Copy the <canvas id="glcanvas"> element and the entire
+    <script> block into your page (keep the id, or update the
+    getElementById('glcanvas') call to match). The effect is
+    self-initializing on load and resizes to fill its canvas.
+  ============================================================
+-->
+`;
+    html = html.replace(/^<!DOCTYPE html>\n/, '<!DOCTYPE html>\n' + instructions);
+
+    const blob = new Blob([html], {type: 'text/html'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'liquid-glass-webgl-export.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(err) {
+    alert('WebGL export failed:\n' + (err && err.message ? err.message : err));
+  }
+});
+
 const exportBtn = document.getElementById('exportBtn');
 const modalOverlay = document.getElementById('modalOverlay');
 const modalClose = document.getElementById('modalClose');
